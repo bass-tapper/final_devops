@@ -1,0 +1,86 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests pytest
+    
+    - name: Run tests
+      run: |
+        # Add actual tests when available
+        echo "Running tests..."
+        # Example: pytest -v
+        
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile.txt
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/rick-morty-script:latest
+          ghcr.io/${{ github.repository_owner }}/rick-morty-script:${{ github.sha }}
+
+# Kubernetes deployment job (uncomment and configure when ready)
+#  deploy:
+#    needs: build-and-push
+#    runs-on: ubuntu-latest
+#    
+#    steps:
+#    - uses: actions/checkout@v3
+#    
+#    - name: Set up kubeconfig
+#      # Set up authentication to your Kubernetes cluster
+#      # This will depend on your specific Kubernetes setup
+#      run: |
+#        # Example: Configure kubectl with your K8s cluster credentials
+#        # echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig
+#        # export KUBECONFIG=kubeconfig
+#        echo "Setting up kubeconfig..."
+#    
+#    - name: Deploy to Kubernetes
+#      run: |
+#        # Replace image tag in deployment.yaml
+#        # sed -i "s|image:.*|image: ghcr.io/${{ github.repository_owner }}/rick-morty-script:${{ github.sha }}|" deployment.yaml
+#        
+#        # Apply Kubernetes manifests
+#        # kubectl apply -f deployment.yaml
+#        # kubectl apply -f service.yaml
+#        echo "Deploying to Kubernetes..."
+
