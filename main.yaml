@@ -1,0 +1,61 @@
+name: Rick and Morty API CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+    
+    - name: Run script
+      run: python rick-morty-api.py
+    
+    - name: Upload CSV artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: character-data
+        path: output/rick_morty_characters.csv
+    
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Build Docker image
+      run: docker build -t rick-morty-script:${{ github.sha }} .
+    
+    - name: Test Docker image
+      run: |
+        mkdir -p output
+        docker run -v $(pwd)/output:/app/output rick-morty-script:${{ github.sha }}
+        ls -l output/
+        
+    # Uncomment below to push to a registry like Docker Hub or GitHub Container Registry
+    # - name: Login to container registry
+    #   uses: docker/login-action@v2
+    #   with:
+    #     username: ${{ secrets.DOCKER_USERNAME }}
+    #     password: ${{ secrets.DOCKER_PASSWORD }}
+    # 
+    # - name: Push Docker image
+    #   run: |
+    #     docker tag rick-morty-script:${{ github.sha }} username/rick-morty-script:latest
+    #     docker push username/rick-morty-script:latest
