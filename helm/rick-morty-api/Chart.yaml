@@ -1,0 +1,14 @@
+apiVersion: v2
+name: rick-morty-api
+version: 0.1.0
+appVersion: 1.0.0
+description: A Helm chart for deploying the Rick and Morty API application
+type: application
+keywords:
+  - rick-morty
+  - api
+  - flask
+maintainers:
+  - name: DevOps Engineer
+    email: devops@example.com
+

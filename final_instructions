@@ -1,0 +1,90 @@
+Here’s a rewritten, detailed, and easy-to-understand version of the instructions for your DevOps test, ensuring clarity and completeness:
+
+DevOps Engineer Home Exercise
+
+This exercise is divided into five key steps to assess your ability to script, containerize, deploy, and automate processes in a DevOps environment. Follow the instructions step-by-step.
+
+Step 1 - Script
+
+Create a script in any programming language of your choice that performs the following tasks:
+	1.	Query the “Rick and Morty” API:
+	•	Retrieve a list of all characters meeting these conditions:
+	•	Species: “Human”
+	•	Status: “Alive”
+	•	Origin: “Earth”
+	2.	Generate a List:
+	•	Extract the following details for each character:
+	•	Name
+	•	Location
+	•	Image link (URL)
+	3.	Export to CSV:
+	•	Save the extracted data in a CSV file with the following format:
+
+Name,Location,Image
+Rick Sanchez,Earth,https://rickandmortyapi.com/api/character/avatar/1.jpeg
+
+
+	4.	API Documentation:
+	•	Use the Rick and Morty API Documentation for reference.
+
+Step 2 - Dockerized App
+
+Convert your script into a RESTful application and containerize it:
+	1.	Enhance the Script:
+	•	Create REST API endpoints:
+	•	/fetch: Returns the data collected in JSON format.
+	•	/healthcheck: Returns a simple response indicating the app’s health (e.g., { "status": "healthy" }).
+	2.	Create a Dockerfile:
+	•	Write a Dockerfile to build and run your application in a containerized environment.
+	3.	Document Usage:
+	•	Update a README.md file with:
+	•	Instructions to build and run the Docker image.
+	•	Details of the REST API endpoints and how to use them.
+
+Step 3 - Kubernetes
+
+Deploy your containerized app to a local Kubernetes cluster using Kind or Minikube:
+	1.	Organize YAML Files:
+	•	Create a folder named yamls and provide the following Kubernetes manifests:
+	•	Deployment.yaml: Defines the deployment of your application.
+	•	Service.yaml: Exposes the application within the cluster.
+	•	Ingress.yaml: Configures external access to your application.
+	2.	Deployment Instructions:
+	•	Update the README.md to include:
+	•	Steps to deploy the manifests to the Kubernetes cluster.
+	•	Details on accessing the application endpoints.
+
+Step 4 - Helm
+
+Use Helm to package and manage your Kubernetes deployment:
+	1.	Create a Helm Chart:
+	•	Create a folder named Helm and include:
+	•	A properly structured Helm chart with templates for deployment, service, ingress, and other resources.
+	•	A values.yaml file for configurable settings.
+	2.	Document Deployment:
+	•	Update the README.md with:
+	•	Instructions to deploy the Helm chart.
+	•	Guidelines on customizing configurations using values.yaml.
+
+Step 5 - GitHub Actions
+
+Automate deployment and testing using GitHub Actions:
+	1.	Create a Workflow:
+	•	Set up a workflow to:
+	•	Create a small Kubernetes cluster (using Kind or another lightweight solution) on the GitHub Actions runner.
+	•	Deploy your application to the cluster.
+	•	Run automated tests for your application’s endpoints.
+	2.	Document the Workflow:
+	•	Update the README.md with:
+	•	An explanation of the workflow, including jobs and steps.
+	•	How to trigger the workflow and interpret its output.
+
+Deliverables Checklist
+	•	A functional script that queries the API and generates a CSV file.
+	•	A Dockerized RESTful application with a working Dockerfile.
+	•	Kubernetes manifests for deployment, service, and ingress.
+	•	A Helm chart with templates and configurable values.
+	•	A GitHub Actions workflow for automated deployment and testing.
+	•	A comprehensive README.md explaining each step, including setup and usage instructions.
+
+Let me know if you need help with any specific part!
