@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rick-morty-api
+  labels:
+    app: rick-morty-api
+    component: api
 spec:
   replicas: 1
   selector:
@@ -11,12 +14,32 @@ spec:
     metadata:
       labels:
         app: rick-morty-api
+        component: api
     spec:
       containers:
       - name: rick-morty-api
-        image: rick-morty-script:latest
+        image: rick-morty-api:latest
         ports:
-        - containerPort: 8000
+        - containerPort: 5000
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 15
+          periodSeconds: 20
         volumeMounts:
         - name: output-volume
           mountPath: /app/output
