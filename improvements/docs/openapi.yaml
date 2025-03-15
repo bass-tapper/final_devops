@@ -1,0 +1,254 @@
+openapi: 3.0.3
+info:
+  title: Rick and Morty API Wrapper
+  description: |
+    A wrapper for the Rick and Morty API that provides filtered character data with caching and rate limiting.
+    
+    This API allows you to fetch characters from the Rick and Morty universe, with optional filtering
+    for human characters who are alive and originate from Earth (C-137). The API includes rate limiting
+    to prevent abuse and caching to improve performance.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server
+
+components:
+  schemas:
+    Character:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the character
+          example: 1
+        name:
+          type: string
+          description: The name of the character
+          example: Rick Sanchez
+        status:
+          type: string
+          description: The status of the character (Alive, Dead, or Unknown)
+          example: Alive
+        species:
+          type: string
+          description: The species of the character
+          example: Human
+        location:
+          type: string
+          description: The last known location of the character
+          example: Earth (Replacement Dimension)
+        origin:
+          type: string
+          description: The origin location of the character
+          example: Earth (C-137)
+        image_url:
+          type: string
+          description: URL to the character's image
+          example: https://rickandmortyapi.com/api/character/avatar/1.jpeg
+    
+    CharacterDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the character
+          example: 1
+        name:
+          type: string
+          description: The name of the character
+          example: Rick Sanchez
+        status:
+          type: string
+          description: The status of the character (Alive, Dead, or Unknown)
+          example: Alive
+        species:
+          type: string
+          description: The species of the character
+          example: Human
+        type:
+          type: string
+          description: The type or subspecies of the character
+          example: ""
+        gender:
+          type: string
+          description: The gender of the character
+          example: Male
+        origin:
+          type: string
+          description: The origin location of the character
+          example: Earth (C-137)
+        location:
+          type: string
+          description: The last known location of the character
+          example: Earth (Replacement Dimension)
+        image_url:
+          type: string
+          description: URL to the character's image
+          example: https://rickandmortyapi.com/api/character/avatar/1.jpeg
+        episode:
+          type: array
+          description: List of episodes in which this character appeared
+          items:
+            type: string
+            example: https://rickandmortyapi.com/api/episode/1
+        url:
+          type: string
+          description: URL to the character's API endpoint
+          example: https://rickandmortyapi.com/api/character/1
+        created:
+          type: string
+          format: date-time
+          description: Time at which the character was created in the database
+          example: 2017-11-04T18:48:46.250Z
+    
+    CharacterList:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: The number of characters returned
+          example: 10
+        characters:
+          type: array
+          description: List of characters
+          items:
+            $ref: '#/components/schemas/Character'
+    
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: Character not found
+
+  responses:
+    NotFound:
+      description: The specified resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+            
+    ServiceUnavailable:
+      description: Service temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  parameters:
+    filteredParam:
+      name: filtered
+      in: query
+      description: Whether to filter characters (humans, alive, from Earth C-137)
+      required: false
+      schema:
+        type: boolean
+        default: true
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns the health status of the API
+      operationId: healthCheck
+      tags:
+        - System
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+
+  /characters:
+    get:
+      summary: Get all characters
+      description: |
+        Returns a list of characters from the Rick and Morty universe.
+        By default, filters for human characters who are alive and from Earth (C-137).
+      operationId: getCharacters
+      tags:
+        - Characters
+      parameters:
+        - $ref: '#/components/parameters/filteredParam'
+      responses:
+        '200':
+          description: A list of characters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CharacterList'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /characters/{characterId}:
+    get:
+      summary: Get character by ID
+      description: Returns detailed information about a specific character
+      operationId: getCharacterById
+      tags:
+        - Characters
+      parameters:
+        - name: characterId
+          in: path
+          description: ID of the character to retrieve
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: Character details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CharacterDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+x-components:
+  rateLimiting:
+    description: |
+      The API implements rate limiting to prevent abuse.
+      By default, clients are limited to 10 requests per 60 seconds based on their IP address.
+      When the rate limit is exceeded, the API returns a 429 status code.
+    
+    defaultLimits:
+      requestsPerMinute: 10
+      windowSeconds: 60
+
+  caching:
+    description: |
+      The API implements caching to improve performance.
+      Character data is cached for 5 minutes (300 seconds) to reduce load on the Rick and Morty API.
+      
+    timeout: 300
+    
+    cachedEndpoints:
+      - /characters
+      - /characters/{characterId}
+

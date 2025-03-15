@@ -1,0 +1,312 @@
+name: Rick and Morty API CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  IMAGE_NAME: rick-morty-api
+  REGISTRY: ghcr.io
+  HELM_VERSION: v3.8.0
+  NAMESPACE: rick-morty-api
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pylint flake8 pytest-mock
+          
+      - name: Lint with flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          
+      - name: Lint with pylint
+        run: |
+          pylint --disable=C0111,C0103,C0303,W0621,W0622,W0212,W0511 *.py
+          
+      - name: Run unit tests with coverage
+        run: |
+          pytest test_rick_morty_api.py --cov=. --cov-report=xml
+          
+      - name: Run integration tests
+        run: |
+          pytest improvements/tests/test_integration.py --cov=. --cov-append --cov-report=xml
+          
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: true
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install bandit safety
+          
+      - name: Run Bandit security scanner
+        run: |
+          bandit -r . -x tests/,venv/
+          
+      - name: Check dependencies for vulnerabilities
+        run: |
+          safety check -r requirements.txt
+          
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          path: '.'
+          format: 'HTML'
+          project: 'Rick-Morty-API'
+          out: 'reports'
+          
+      - name: Upload security reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: reports/
+
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            latest
+            
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  verify-metrics:
+    name: Verify Prometheus Metrics
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install prometheus-client pytest pytest-mock
+          
+      - name: Apply Prometheus metrics implementation
+        run: |
+          cp improvements/code/prometheus_metrics.py .
+          
+      - name: Run metrics tests
+        run: |
+          python -c "
+          import prometheus_metrics
+          from prometheus_client import generate_latest
+          from prometheus_client.parser import text_string_to_metric_families
+          
+          metrics = generate_latest()
+          families = list(text_string_to_metric_families(metrics.decode('utf-8')))
+          
+          required_metrics = [
+            'rick_morty_api_requests_total',
+            'rick_morty_api_request_duration_seconds',
+            'rick_morty_api_cache_hits_total',
+            'rick_morty_api_cache_misses_total',
+            'rick_morty_api_rate_limit_remaining'
+          ]
+          
+          found_metrics = [fam.name for fam in families]
+          
+          for metric in required_metrics:
+            if metric not in found_metrics:
+              print(f'❌ Missing required metric: {metric}')
+              exit(1)
+          
+          print('✅ All required Prometheus metrics are properly implemented')
+          "
+
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: [build, verify-metrics]
+    if: github.event_name == 'push'
+    environment: production
+    env:
+      HELM_CHART_PATH: ./helm/rick-morty-api
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name rick-morty-cluster --region us-east-1
+          
+      - name: Deploy with Helm
+        run: |
+          # Add Prometheus monitoring configuration
+          cp improvements/code/prometheus_metrics.py .
+          
+          # Modify Helm values to enable monitoring
+          cat << EOF > monitoring-values.yaml
+          monitoring:
+            enabled: true
+            serviceMonitor:
+              enabled: true
+              namespace: monitoring
+              interval: 15s
+              scrapeTimeout: 14s
+              labels:
+                prometheus: prometheus-operator
+            prometheus:
+              rule:
+                enabled: true
+                namespace: monitoring
+                additionalLabels:
+                  prometheus: prometheus-operator
+                alerts:
+                  - alert: HighErrorRate
+                    expr: rate(rick_morty_api_requests_total{status_code=~"5.."}[5m]) / rate(rick_morty_api_requests_total[5m]) > 0.1
+                    for: 5m
+                    labels:
+                      severity: critical
+                    annotations:
+                      summary: High error rate detected
+                      description: Error rate is above 10% for the last 5 minutes
+          EOF
+          
+          # Deploy with Helm
+          helm upgrade --install rick-morty-api ${{ env.HELM_CHART_PATH }} \
+            --namespace ${{ env.NAMESPACE }} \
+            --create-namespace \
+            --set image.repository="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}" \
+            --set image.tag="${{ github.sha }}" \
+            --set apiKey=${{ secrets.API_KEY }} \
+            -f monitoring-values.yaml
+
+      - name: Verify Deployment
+        run: |
+          kubectl rollout status deployment/rick-morty-api -n ${{ env.NAMESPACE }} --timeout=300s
+          
+      - name: Check Prometheus ServiceMonitor
+        run: |
+          kubectl get servicemonitor rick-morty-api -n ${{ env.NAMESPACE }} -o yaml
+          
+  post-deploy-tests:
+    name: Post-Deployment Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-mock requests
+          
+      - name: Run end-to-end tests
+        run: |
+          # Get the deployed API endpoint
+          API_ENDPOINT=$(kubectl get ingress rick-morty-api -n ${{ env.NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          export API_ENDPOINT="https://${API_ENDPOINT}"
+          
+          # Run end-to-end tests against the deployed environment
+          pytest improvements/tests/test_integration.py -k "test_live_" --endpoint $API_ENDPOINT
+          
+      - name: Verify Metrics Collection
+        run: |
+          # Check if Prometheus is scraping our service
+          PROMETHEUS_POD=$(kubectl get pods -n monitoring -l app=prometheus -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n monitoring $PROMETHEUS_POD -- curl -s 'http://localhost:9090/api/v1/targets' | grep rick-morty-api
+
